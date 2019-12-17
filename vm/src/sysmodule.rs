@@ -178,7 +178,7 @@ fn sys_exc_info(vm: &VirtualMachine) -> PyResult {
     Ok(vm.ctx.new_tuple(match vm.current_exception() {
         Some(exception) => vec![
             exception.class().into_object(),
-            exception.clone(),
+            exception.clone().into_object(),
             vm.get_none(),
         ],
         None => vec![vm.get_none(), vm.get_none(), vm.get_none()],

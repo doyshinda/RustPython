@@ -24,6 +24,7 @@ use nix::unistd::{self, Gid, Pid, Uid, Whence};
 use std::os::unix::io::RawFd;
 
 use super::errno::errors;
+use crate::exceptions::PyBaseExceptionRef;
 use crate::function::{IntoPyNativeFunc, OptionalArg, PyFuncArgs};
 use crate::obj::objbytes::PyBytesRef;
 use crate::obj::objdict::PyDictRef;
@@ -154,7 +155,7 @@ pub fn os_open(vm: &VirtualMachine, args: PyFuncArgs) -> PyResult {
     unimplemented!()
 }
 
-pub fn convert_io_error(vm: &VirtualMachine, err: io::Error) -> PyObjectRef {
+pub fn convert_io_error(vm: &VirtualMachine, err: io::Error) -> PyBaseExceptionRef {
     #[allow(unreachable_patterns)] // some errors are just aliases of each other
     let exc_type = match err.kind() {
         ErrorKind::NotFound => vm.ctx.exceptions.file_not_found_error.clone(),
@@ -171,14 +172,14 @@ pub fn convert_io_error(vm: &VirtualMachine, err: io::Error) -> PyObjectRef {
     };
     let os_error = vm.new_exception(exc_type, err.to_string());
     if let Some(errno) = err.raw_os_error() {
-        vm.set_attr(&os_error, "errno", vm.ctx.new_int(errno))
+        vm.set_attr(os_error.as_object(), "errno", vm.ctx.new_int(errno))
             .unwrap();
     }
     os_error
 }
 
 #[cfg(unix)]
-pub fn convert_nix_error(vm: &VirtualMachine, err: nix::Error) -> PyObjectRef {
+pub fn convert_nix_error(vm: &VirtualMachine, err: nix::Error) -> PyBaseExceptionRef {
     let nix_error = match err {
         nix::Error::InvalidPath => {
             let exc_type = vm.ctx.exceptions.file_not_found_error.clone();
@@ -199,7 +200,7 @@ pub fn convert_nix_error(vm: &VirtualMachine, err: nix::Error) -> PyObjectRef {
     };
 
     if let nix::Error::Sys(errno) = err {
-        vm.set_attr(&nix_error, "errno", vm.ctx.new_int(errno as i32))
+        vm.set_attr(nix_error.as_object(), "errno", vm.ctx.new_int(errno as i32))
             .unwrap();
     }
 
@@ -1100,18 +1101,18 @@ fn os_getegid(vm: &VirtualMachine) -> PyObjectRef {
 }
 
 #[cfg(unix)]
-fn os_getpgid(pid: u32, vm: &VirtualMachine) -> PyObjectRef {
+fn os_getpgid(pid: u32, vm: &VirtualMachine) -> PyResult {
     match unistd::getpgid(Some(Pid::from_raw(pid as i32))) {
-        Ok(pgid) => vm.new_int(pgid.as_raw()),
-        Err(err) => convert_nix_error(vm, err),
+        Ok(pgid) => Ok(vm.new_int(pgid.as_raw())),
+        Err(err) => Err(convert_nix_error(vm, err)),
     }
 }
 
 #[cfg(all(unix, not(target_os = "redox")))]
-fn os_getsid(pid: u32, vm: &VirtualMachine) -> PyObjectRef {
+fn os_getsid(pid: u32, vm: &VirtualMachine) -> PyResult {
     match unistd::getsid(Some(Pid::from_raw(pid as i32))) {
-        Ok(sid) => vm.new_int(sid.as_raw()),
-        Err(err) => convert_nix_error(vm, err),
+        Ok(sid) => Ok(vm.new_int(sid.as_raw())),
+        Err(err) => Err(convert_nix_error(vm, err)),
     }
 }
 
